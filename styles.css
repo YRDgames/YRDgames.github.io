@@ -51,7 +51,7 @@ a {
     bottom: 0;
 }
 
-#left {text-align: left; margin-left: 15px;}
+#left {text-align: left; margin-left: 15px; padding-top: 50px;}
 
 .nav-bar {
     display: flex;
