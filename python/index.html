@@ -1,60 +1,40 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <title>Pyodide App with Password</title>
+<meta charset="utf-8">
+<title>Number Guessing Game</title>
 </head>
 <body>
-  <h2>Enter Password</h2>
-  <input type="password" id="passwordInput" placeholder="Password">
-  <button id="loginBtn">Login</button>
-  <p id="status"></p>
+<h1>Number Guessing Game</h1>
+<input type="text" id="guess" placeholder="Enter a number">
+<button id="submit">Guess</button>
+<pre id="output"></pre>
 
-  <div id="app" style="display:none;">
-    <h2>Python Script Output</h2>
-    <pre id="output"></pre>
-  </div>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
+<script>
+async function main() {
+  const pyodide = await loadPyodide();
 
-  <!-- Load Pyodide -->
-  <script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
-  <script>
-    let pyodide;
+  // Load the Python game
+  const scriptSource = await fetch("script.py").then(r => r.text());
+  await pyodide.runPythonAsync(`
+import types, sys
+module = types.ModuleType("script")
+exec("""${scriptSource.replace(/\\/g,"\\\\").replace(/`/g,"\\`")}""", module.__dict__)
+sys.modules["script"] = module
+`);
 
-    async function initPyodide() {
-      pyodide = await loadPyodide();
-      // Load your Python script into Pyodide
-      await pyodide.runPythonAsync(`
-          from pyodide.http import pyfetch
-          import asyncio
+  const runPython = (guess) => pyodide.runPython(`__import__('script').run(${JSON.stringify(guess)})`);
 
-          async def load_file():
-              response = await pyfetch("script.py")
-              text = await response.string()
-              with open("script.py", "w") as f:
-                  f.write(text)
+  const outputEl = document.getElementById("output");
+  document.getElementById("submit").onclick = () => {
+    const guess = document.getElementById("guess").value;
+    const result = runPython(guess);
+    outputEl.textContent = result;
+  };
+}
 
-          asyncio.ensure_future(load_file())
-      `);
-    }
-
-    initPyodide();
-
-    const PASSWORD = "devteam"; // 🔑 your password
-
-    document.getElementById("loginBtn").addEventListener("click", async () => {
-      const entered = document.getElementById("passwordInput").value;
-      if (entered === PASSWORD) {
-        document.getElementById("status").innerText = "Access granted!";
-        document.getElementById("app").style.display = "block";
-
-        // Run your Python script
-        await pyodide.runPythonAsync("import script");
-        let result = await pyodide.runPythonAsync("script.run()");
-        document.getElementById("output").innerText = result;
-      } else {
-        document.getElementById("status").innerText = "Wrong password.";
-      }
-    });
-  </script>
+main();
+</script>
 </body>
 </html>
