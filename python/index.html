@@ -2,132 +2,88 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Terminal-style Pyodide Number Guess</title>
+  <title>Password Protected Game</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <style>
-    html,body{height:100%;margin:0}
-    #terminal { height:100vh; width:100vw; background:#1e1e1e;}
+    body { font-family: Arial,sans-serif; padding:20px; max-width:600px; }
+    .hidden { display:none; }
+    pre { background:#f4f4f4; padding:10px; border-radius:6px; white-space:pre-wrap; }
   </style>
-
-  <!-- xterm.css -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
 </head>
 <body>
-  <div id="terminal"></div>
+  <h1>Number Guessing Game</h1>
+  <label> Password: <input id="pw" type="password" autocomplete="current-password"></label>
+  <button id="unlock">Unlock & Play</button>
+  <p id="status">Status: idle</p>
 
-  <!-- xterm.js -->
-  <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
+  <div id="app" class="hidden">
+    <h2>Game Output</h2>
+    <pre id="output"></pre>
+  </div>
 
-  <!-- Pyodide -->
   <script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
-
   <script>
-  (async () => {
-    // Setup xterm
-    const termContainer = document.getElementById("terminal");
-    const term = new window.Terminal({
-      cursorBlink: true,
-      convertEol: true,
-      cols: 80,
-      rows: 24,
-      theme: { background: '#1e1e1e', foreground: '#ffffff' }
-    });
-    term.open(termContainer);
+    const passwordRequired = "devteam"; // your password
+    const statusEl = document.getElementById("status");
+    const outputEl = document.getElementById("output");
+    const appDiv = document.getElementById("app");
 
-    // Simple line input queue: when user presses Enter, resolve next pending promise
-    let lineResolve = null;
-    let inputBuffer = "";
-
-    // Expose terminal write for Python to call
-    window.terminal_write = (s) => {
-      // Ensure text; xterm expects strings
-      term.write(String(s));
-    };
-
-    // Provide a get_line() function that JS returns as a Promise to Python
-    window.get_line = () => {
-      return new Promise((resolve) => {
-        // If there's already buffered content (shouldn't be), consume it
-        if (inputBuffer.length > 0) {
-          const val = inputBuffer;
-          inputBuffer = "";
-          resolve(val);
-          return;
-        }
-        // Otherwise, store resolver to be called on Enter
-        lineResolve = resolve;
-      });
-    };
-
-    // Handle keys typed into terminal
-    term.onKey(e => {
-      const ev = e.domEvent;
-      const printable = !ev.altKey && !ev.ctrlKey && !ev.metaKey;
-      if (ev.key === "Backspace") {
-        if (inputBuffer.length > 0) {
-          // Remove last character from buffer and move cursor back
-          inputBuffer = inputBuffer.slice(0, -1);
-          term.write('\b \b');
-        }
-      } else if (ev.key === "Enter") {
-        term.write('\r\n');
-        const val = inputBuffer;
-        inputBuffer = "";
-        if (lineResolve) {
-          // resolve the pending Promise with the line
-          lineResolve(val);
-          lineResolve = null;
-        } else {
-          // no resolver — store it temporarily
-          // (this generally won't happen because get_line is called before user types)
-        }
-      } else if (printable) {
-        inputBuffer += e.key;
-        term.write(e.key);
+    document.getElementById("unlock").addEventListener("click", async () => {
+      const pw = document.getElementById("pw").value;
+      if (pw !== passwordRequired) {
+        statusEl.textContent = "Wrong password!";
+        return;
       }
-    });
+      statusEl.textContent = "Password correct, loading Pyodide...";
+      try {
+        const pyodide = await loadPyodide();
 
-    // Load Pyodide
-    term.write("Loading Python runtime...\r\n");
-    const pyodide = await loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.1/full/" });
+        // Define the game script in Pyodide
+        const scriptCode = `
+import random
 
-    // Register the JS functions so Python can import them from js
-    // Pyodide already provides `js` module to access window, so ensure functions exist on window (we did above)
-    // Now fetch script.py and load as module 'script'
-    term.write("Loading script...\r\n");
-    const resp = await fetch("script.py");
-    if (!resp.ok) {
-      term.write("Failed to fetch script.py — make sure it is in the same folder as index.html\r\n");
-      return;
-    }
-    let scriptSource = await resp.text();
-
-    // Build a loader that registers module "script"
-    // Escape backslashes and backticks to safely include in template
-    const esc = scriptSource.replace(/\\/g,"\\\\").replace(/`/g,"\\`").replace(/\$\{/g,"\\${");
-    const loader = `
-import types, sys
-module = types.ModuleType("script")
-code = r"""${esc}"""
-exec(code, module.__dict__)
-sys.modules["script"] = module
+def run():
+    secret_number = random.randint(1, 100)
+    attempts = 0
+    output = []
+    while True:
+        guess_str = __import__("js").prompt("Guess a number between 1 and 100:")
+        if guess_str is None:
+            output.append("Game cancelled.")
+            break
+        try:
+            guess = int(guess_str)
+            attempts += 1
+            if guess < secret_number:
+                output.append("Too low! Try again.")
+            elif guess > secret_number:
+                output.append("Too high! Try again.")
+            else:
+                output.append(f"Congratulations! You guessed the number in {attempts} attempts.")
+                break
+        except ValueError:
+            output.append("Invalid input. Please enter a number.")
+    return "\\n".join(output)
 `;
 
-    // Make Python-side terminal_write wrapper that calls window.terminal_write
-    // But we already import terminal_write via js. So no need to patch builtins.
-    await pyodide.runPythonAsync(loader);
+        // Load script as a module
+        await pyodide.runPythonAsync(`
+import types, sys
+module = types.ModuleType("script")
+exec("""${scriptCode}""", module.__dict__)
+sys.modules["script"] = module
+        `);
 
-    term.write("Starting script.run() — interact in terminal below.\r\n");
-
-    // Run script.run(); it's async so we await it. When script calls get_line() it will await JS Promise.
-    try {
-      await pyodide.runPythonAsync(`await __import__("script").run()`);
-      term.write("\r\nScript finished.\r\n");
-    } catch (err) {
-      term.write("\r\nScript error: " + String(err) + "\r\n");
-      console.error(err);
-    }
-  })();
+        statusEl.textContent = "Running game...";
+        const result = await pyodide.runPythonAsync(`__import__("script").run()`);
+        outputEl.textContent = String(result);
+        appDiv.classList.remove("hidden");
+        statusEl.textContent = "Game finished!";
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = "Error: " + (err.message||err);
+      }
+    });
   </script>
 </body>
 </html>
