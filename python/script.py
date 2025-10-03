@@ -1,11 +1,16 @@
 import random
 
-# Keep state inside the module
+# Store game state
 secret_number = random.randint(1, 100)
 attempts = 0
 
-# run() is called from JS
+def reset_game():
+    global secret_number, attempts
+    secret_number = random.randint(1, 100)
+    attempts = 0
+
 def run(guess=None):
+    """Called from JavaScript: pass guess as a string"""
     global attempts, secret_number
     output = ""
     if guess is None:
@@ -19,10 +24,8 @@ def run(guess=None):
             elif guess > secret_number:
                 output = "Too high! Try again."
             else:
-                output = f"Congratulations! You guessed the number in {attempts} attempts."
-                # Reset for a new game
-                secret_number = random.randint(1, 100)
-                attempts = 0
+                output = f"Congratulations! You guessed it in {attempts} attempts."
+                reset_game()
         except ValueError:
-            output = "Invalid input. Please enter a number."
+            output = "Invalid input! Please enter a number."
     return output
