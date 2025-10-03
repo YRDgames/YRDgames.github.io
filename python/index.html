@@ -2,12 +2,14 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Password Protected Game</title>
+  <title>Password Protected Number Guessing Game</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <style>
     body { font-family: Arial,sans-serif; padding:20px; max-width:600px; }
     .hidden { display:none; }
     pre { background:#f4f4f4; padding:10px; border-radius:6px; white-space:pre-wrap; }
+    input { padding:4px; }
+    button { padding:5px 10px; margin-left:5px; }
   </style>
 </head>
 <body>
@@ -22,30 +24,16 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
-  <script>
-    const passwordRequired = "devteam"; // your password
-    const statusEl = document.getElementById("status");
-    const outputEl = document.getElementById("output");
-    const appDiv = document.getElementById("app");
 
-    document.getElementById("unlock").addEventListener("click", async () => {
-      const pw = document.getElementById("pw").value;
-      if (pw !== passwordRequired) {
-        statusEl.textContent = "Wrong password!";
-        return;
-      }
-      statusEl.textContent = "Password correct, loading Pyodide...";
-      try {
-        const pyodide = await loadPyodide();
-
-        // Define the game script in Pyodide
-        const scriptCode = `
+  <!-- Python code stored in a script tag -->
+  <script type="text/python" id="game-script">
 import random
 
 def run():
     secret_number = random.randint(1, 100)
     attempts = 0
     output = []
+
     while True:
         guess_str = __import__("js").prompt("Guess a number between 1 and 100:")
         if guess_str is None:
@@ -63,14 +51,34 @@ def run():
                 break
         except ValueError:
             output.append("Invalid input. Please enter a number.")
-    return "\\n".join(output)
-`;
 
-        // Load script as a module
+    return "\\n".join(output)
+  </script>
+
+  <script>
+    const passwordRequired = "devteam"; // your password
+    const statusEl = document.getElementById("status");
+    const outputEl = document.getElementById("output");
+    const appDiv = document.getElementById("app");
+
+    document.getElementById("unlock").addEventListener("click", async () => {
+      const pw = document.getElementById("pw").value;
+      if (pw !== passwordRequired) {
+        statusEl.textContent = "Wrong password!";
+        return;
+      }
+
+      statusEl.textContent = "Password correct, loading Pyodide...";
+      try {
+        const pyodide = await loadPyodide();
+
+        // Load Python code safely from the <script> tag
+        const pyCode = document.getElementById("game-script").textContent;
+
         await pyodide.runPythonAsync(`
 import types, sys
 module = types.ModuleType("script")
-exec("""${scriptCode}""", module.__dict__)
+exec(r"""${pyCode}""", module.__dict__)
 sys.modules["script"] = module
         `);
 
@@ -81,7 +89,7 @@ sys.modules["script"] = module
         statusEl.textContent = "Game finished!";
       } catch (err) {
         console.error(err);
-        statusEl.textContent = "Error: " + (err.message||err);
+        statusEl.textContent = "Error: " + (err.message || err);
       }
     });
   </script>
